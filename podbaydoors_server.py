@@ -3,6 +3,7 @@
 # all these django imports are here
 # run with: python podbaydoors_server.py runbolt --dev
 # and this will act like you were doing the usual python manage.py runbolt --dev, but without needing to create a full django project structure
+# %%
 import sys
 from django.conf import settings
 # from django.urls import path # don't need url_patterns since we're using django-bolt's API routing, but if we were doing normal django views we would need this
@@ -12,9 +13,9 @@ from django.conf import settings
 import asyncio
 from datastar_py import ServerSentEventGenerator as SSE
 
-from datastar_py.django import datastar_response
-
-
+# %% [markdown]
+# This would normally be in the settings file
+# %%
 settings.configure(
     DEBUG=True,
     SECRET_KEY="a-bad-secret-key",  # Insecure, use a proper key in production
@@ -28,8 +29,8 @@ settings.configure(
 )
 
 # django-bolt imports after settings
-from django_bolt import BoltAPI
-from django_bolt.responses import HTML
+from django_bolt import BoltAPI # noqa: E402
+from django_bolt.responses import HTML, StreamingResponse # noqa: E402
 
 api = BoltAPI()
 
@@ -40,17 +41,28 @@ async def home(request):
     return HTML(
         open("podbaydoors.html").read()
     )  # do it dynamically so I can edit it in while the server is running
-
-
+# %% [markdown]
+# The issue: @datastar_response wraps the generator in Django's StreamingHttpResponse (as a DatastarResponse), which Bolt doesn't recognise.
+#  Bolt has its own StreamingResponse that needs:
+#   - content = an already-called generator instance (generate(), not generate)                                                                   
+#  - media_type="text/event-stream"
+#  - The same SSE headers that DatastarResponse was setting automatically  
+# So we have to do the SSE headers and media type ourselves, and call the generator function to get the instance to pass to StreamingResponse
+# %% 
 @api.get("/open-the-bay-doors")
-@datastar_response
 async def open_doors(request):
-    yield SSE.patch_elements(
-        # note this uses a special unicode char for the apostrophes
-        """<div id="hal">I’m sorry, Dave. I’m afraid I can’t do that.</div>"""
+    async def generate():
+        yield SSE.patch_elements(
+            """<div id="hal">I’m sorry, Dave. I’m afraid I can’t do that.</div>"""
+        )
+        await asyncio.sleep(1)
+        yield SSE.patch_elements("""<div id="hal">Waiting for an order...</div>""")
+
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
-    await asyncio.sleep(1)
-    yield SSE.patch_elements("""<div id="hal">Waiting for an order...</div>""")
 
 
 # Django urlpatterns still needed for runserver, but runbolt handles everything
@@ -58,7 +70,7 @@ urlpatterns = []
 
 
 if __name__ == "__main__":
-    from django.core.management import (
+    from django.core.management import ( # noqa: E402
         execute_from_command_line,
     )  # needs to be after other things are configured (single-file django app style)
 
