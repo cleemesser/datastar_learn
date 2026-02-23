@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+    <script type="module"
+        src="https://cdn.jsdelivr.net/gh/starfederation/datastar@1.0.0-RC.7/bundles/datastar.js"></script>
+</head>
+
+<body>
+    <button data-on:click="alert('I’m sorry, Dave. I’m afraid I can’t do that.')">
+        Open the pod bay doors, HAL.
+    </button>
+<!-- call to the server on click -->
+    <button data-on:click="@get('/open-the-bay-doors')">
+        Open the pod bay doors, HAL.
+    </button>
+    <div id="hal"></div> <!-- This is where the response from the server will be rendered.
+</body>
+
+</html>
