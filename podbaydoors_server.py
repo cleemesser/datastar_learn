@@ -53,7 +53,7 @@ async def home(request):
 async def open_doors(request):
     async def generate():
         yield SSE.patch_elements(
-            """<div id="hal">I’m sorry, Dave. I’m afraid I can’t do that.</div>"""
+            """<div id="hal">I'm sorry, Dave. I'm afraid I can't do that.</div>"""
         )
         await asyncio.sleep(1)
         yield SSE.patch_elements("""<div id="hal">Waiting for an order...</div>""")
@@ -61,7 +61,11 @@ async def open_doors(request):
     return StreamingResponse(
         generate(),
         media_type="text/event-stream",
-        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+            "Content-Encoding": "identity",  # tells Actix Compress middleware to skip this response
+        },
     )
 
 
