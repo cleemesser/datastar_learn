@@ -1,0 +1,24 @@
+[project]
+name = "datastar-learn"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    "datastar-py>=0.8.0",
+    "django-bolt>=0.6.1",
+    "nanodjango-bolt",
+]
+
+[dependency-groups]
+dev = [
+    "ipython>=9.10.0",
+]
+
+[tool.uv.workspace]
+members = [
+    "ext/nanodjango-bolt",
+]
+
+[tool.uv.sources]
+nanodjango-bolt = { workspace = true, editable = true }

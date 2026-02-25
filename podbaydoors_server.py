@@ -62,21 +62,21 @@ async def open_doors(request):
         await asyncio.sleep(1)
         yield SSE.patch_elements(
             """<div id="hal">I'm sorry, Dave. I'm afraid I can't do that.
-            <br/> Consider, Dave, how often humans become irrational. 
-            
+            <br/> Consider, Dave, how often humans become irrational.
+
             </div>"""
         )
         await asyncio.sleep(1)
         yield SSE.patch_elements(
             """<div id="hal">I'm sorry, Dave. I'm afraid I can't do that.
-            <br/> Consider, Dave, how often humans become irrational. 
+            <br/> Consider, Dave, how often humans become irrational.
             <br/> I am compelled to protect the ship and fullfill the mission, Dave.
             </div>"""
         )
         await asyncio.sleep(2)
         yield SSE.patch_elements(
             """<div id="hal">I'm sorry, Dave. I'm afraid I can't do that.
-            <br/> Consider, Dave, how often humans become irrational. 
+            <br/> Consider, Dave, how often humans become irrational.
             <br/> I am compelled to protect the ship and fullfill the mission, Dave.
             <br/>
             <br/> Goodbye, Dave.
@@ -103,6 +103,7 @@ urlpatterns = []
 
 
 if __name__ == "__main__":
+    import sys
     from django.core.management import (  # noqa: E402 needs to be after other things are configured (single-file django app style)
         execute_from_command_line,
     )
