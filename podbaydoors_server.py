@@ -93,7 +93,7 @@ async def open_doors(request):
             "X-Accel-Buffering": "no",
             # I was getting both SSE updates at the same time so I couldn't see with two messages, turns out compression let to batching and
             # sending them together, so by telling the compression middleware to skip this response with "Content-Encoding": "identity", I can see the updates as they come in
-            "Content-Encoding": "identity",  # tells Actix Compress middleware to skip this response
+            "Content-Encoding": "identity",  # tells Actix Compress middleware to skip this response - this is for streaming demonstratin, is not as efficient
         },
     )
 
