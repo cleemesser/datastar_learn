@@ -51,22 +51,24 @@ chat_html = """
 </head>
 
 <body data-signals="{text_msg: ''}" data-theme="dim" class="min-h-screen bg-base-200 flex items-center justify-center p-4">
-    <div class="card bg-base-100 shadow-xl w-full max-w-lg">
+    <div class="card bg-base-100 shadow-xl ">
         <div class="card-body">
             <h1 class="card-title text-2xl">Chat with Friends</h1>
             <div id="chat-container" data-init="@get('/api/messages')"
                 class="h-80 overflow-y-auto rounded-box bg-base-200 p-4 space-y-2">
                 <div id="chat-content"></div>
             </div>
-            <div class="flex gap-2 mt-2">
+            <div>_________</div>
+            <div class="flex gap-1 mt-2">
                 <textarea id="msg-input" placeholder="Type your message here..."
                     cols="20" rows="4"
                     class="textarea textarea-bordered flex-1"
                     data-bind="text_msg"
-                    data-on:keydown="evt.key === 'Enter' && !evt.shiftKey && @post('/api/new_message'); text_msg = ''"></textarea>
-                <button id="msg-send-button" class="btn btn-primary"
-                    data-on:click="@post('/api/new_message'); text_msg = ''">Send</button>
-            </div>
+                    data-on:keydown="evt.key === 'Enter' && evt.shiftKey && @post('/api/new_message'); text_msg = ''"></textarea>
+                        </div>
+        <button id="msg-send-button" class="btn inline-block cursor-pointer rounded-md bg-gray-800 px-4 py-3 text-center text-sm font-semibold text-white transition duration-200 ease-in-out hover:bg-gray-900"
+                    data-on:click="@post('/api/new_message'); text_msg = ''">Send (shift-return)</button>
+
         </div>
     </div>
 </body>
@@ -87,7 +89,7 @@ async def render_messages():
         f'</div>'
         for m in reversed(messages)
     )
-    print(f"Rendering messages:\n{lines}")
+    #print(f"Rendering messages:\n{lines}")
     return (
         f'<div id="chat-content">{lines}</div>'
     )
@@ -122,7 +124,15 @@ async def new_message(msg: MessagePayload):
     if text_msg:
         await Message.objects.acreate(text_msg=text_msg)
         new_message_event.set()
-    return {"status": "ok"}
+    
+        return StreamingResponse(
+           iter([SSE.patch_signals({"text_msg": ""})]),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache"}
+        )
+    else:
+        return Response(status_code=400, content="Empty message is ignored.")
+    
 
 
 bolt.mount_django(r"/")
