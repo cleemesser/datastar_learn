@@ -6,7 +6,8 @@ readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
     "datastar-py>=0.8.0",
-    "django-bolt>=0.6.1",
+    "django-bolt",
+    "nanodjango",
     "nanodjango-bolt",
 ]
 
@@ -17,9 +18,13 @@ dev = [
 
 [tool.uv.workspace]
 members = [
+    "ext/django-bolt",
+    "ext/nanodjango",
     "ext/nanodjango-bolt",
-    "ext/fasttag",
 ]
 
 [tool.uv.sources]
+nanodjango = { workspace = true, editable = true }
+django-bolt = { workspace = true, editable = true }
 nanodjango-bolt = { workspace = true, editable = true }
+
