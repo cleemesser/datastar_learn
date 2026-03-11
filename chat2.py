@@ -30,7 +30,7 @@ app = Django(
 bolt = BoltAPI()
 
 # add this to the admin file as well
-# @app.admin(list_display=["id","created_at","text_msg"])
+@app.admin(list_display=["id","created_at","username", "text_msg"])
 class Message(models.Model):
     text_msg = models.CharField(max_length=256)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -49,11 +49,21 @@ chat_html = """
     <link href="https://cdn.jsdelivr.net/npm/daisyui@5/daisyui.css" rel="stylesheet" type="text/css" />
     <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
     <script type="module" src="https://cdn.jsdelivr.net/gh/starfederation/datastar@1.0.0-RC.8/bundles/datastar.js"></script>
+    <script>
+    function scrollToEnd(id) {
+        const el = document.getElementById(id);
+        if (el) {
+            setTimeout(() => {
+                el.scrollTop = el.scrollHeight;
+            }, 0);
+        }
+    }
+    </script>
 </head>
 <!-- this is a bit of a hack to set up global signals for the page -->
 <body data-signals="{text_msg: '', username: ''}" data-theme="dim" class="min-h-screen bg-base-200 flex items-center justify-center p-4">
     <!-- form not necessary for datastar binding given javascript required, but could add if want multi-page req/resp app -->
-    
+
     <div class="card bg-base-100 shadow-xl ">
         <div class="card-body">
             <h1 class="card-title text-2xl">Chat with Friends</h1>
@@ -71,12 +81,13 @@ chat_html = """
                     data-bind="text_msg"
                     data-on:keydown="evt.key === 'Enter' && evt.shiftKey && @post('/api/new_message'); text_msg = ''"></textarea>
                         </div>
-        <button id="msg-send-button" 
+        <button id="msg-send-button"
         class="btn inline-block cursor-pointer rounded-md bg-gray-800 px-4 py-3 text-center text-sm font-semibold text-white transition duration-200 ease-in-out hover:bg-gray-900"
                     data-on:click="@post('/api/new_message'); text_msg = ''">Send (shift-return)</button>
 
         </div>
     </div>
+
 </body>
 
 </html>
@@ -97,7 +108,7 @@ async def render_messages():
     )
     #print(f"Rendering messages:\n{lines}")
     return (
-        f'<div id="chat-content">{lines}</div>'
+        f'''<div id="chat-content" data-init="scrollToEnd('chat-container')">{lines}</div>'''
     )
 
 class MessagePayload(Serializer):
@@ -132,7 +143,7 @@ async def new_message(msg: MessagePayload):
     if text_msg:
         await Message.objects.acreate(text_msg=text_msg, username=username)
         new_message_event.set()
-    
+
         return StreamingResponse(
            iter([SSE.patch_signals({"text_msg": ""})]),
             media_type="text/event-stream",
@@ -140,7 +151,7 @@ async def new_message(msg: MessagePayload):
         )
     else:
         return Response(status_code=400, content="Empty message is ignored.")
-    
+
 
 
 bolt.mount_django(r"/")
