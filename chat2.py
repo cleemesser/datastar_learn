@@ -60,7 +60,9 @@ chat_html = """
     }
     </script>
 </head>
-<!-- this is a bit of a hack to set up global signals for the page -->
+<!-- this sets up global signals for the page, don't think it is required but it declares the "globals" for
+     the page,
+     -  might use auth/cookies instead of just a username -->
 <body data-signals="{text_msg: '', username: ''}" data-theme="dim" class="min-h-screen bg-base-200 flex items-center justify-center p-4">
     <!-- form not necessary for datastar binding given javascript required, but could add if want multi-page req/resp app -->
 
@@ -69,6 +71,7 @@ chat_html = """
             <h1 class="card-title text-2xl">Chat with Friends</h1>
             <label class="label">Username:</label>
             <input type="text" id="username" data-bind="username"placeholder="Enter your username" class="input input-bordered w-full max-w-xs mb-4" />
+            <!-- first time when this is added, gets messages -->
             <div id="chat-container" data-init="@get('/api/messages')"
                 class="h-80 overflow-y-auto rounded-box bg-base-200 p-4 space-y-2">
                 <div id="chat-content"></div>
