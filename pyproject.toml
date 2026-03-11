@@ -9,6 +9,7 @@ dependencies = [
     "django-bolt",
     "nanodjango",
     "nanodjango-bolt",
+    "python-fasthtml>=0.12.48",
 ]
 
 [dependency-groups]
@@ -21,10 +22,12 @@ members = [
     "ext/django-bolt",
     "ext/nanodjango",
     "ext/nanodjango-bolt",
+    "datastar-python",
 ]
 
 [tool.uv.sources]
 nanodjango = { workspace = true, editable = true }
 django-bolt = { workspace = true, editable = true }
 nanodjango-bolt = { workspace = true, editable = true }
+datastar-py = { workspace = true, editable = true }
 
