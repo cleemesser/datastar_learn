@@ -12,6 +12,7 @@ All backends use `datastar_py.ServerSentEventGenerator as SSE` and Django Bolt's
 
 Every SSE endpoint follows this shape:
 
+clm - is this true, this is just what I tried
 ```python
 from datastar_py import ServerSentEventGenerator as SSE
 from django_bolt.responses import StreamingResponse

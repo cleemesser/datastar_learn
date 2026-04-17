@@ -6,15 +6,23 @@ readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
     "datastar-py>=0.8.0",
+    "debugpy>=1.8.20",
     "django-bolt",
+    "ipykernel>=7.2.0",
+    "ipython>=9.11.0",
     "nanodjango",
     "nanodjango-bolt",
+    "pip>=26.0.1",
     "python-fasthtml>=0.12.48",
+    "sqlmodel>=0.0.37",
+    "zhtml>=1.1.1",
+    "ztml>=0.1.1",
 ]
 
 [dependency-groups]
 dev = [
     "ipython>=9.10.0",
+    "jupyter>=1.1.1",
 ]
 
 [tool.uv.workspace]
@@ -29,5 +37,5 @@ members = [
 nanodjango = { workspace = true, editable = true }
 django-bolt = { workspace = true, editable = true }
 nanodjango-bolt = { workspace = true, editable = true }
-datastar-py = { workspace = true, editable = true }
+datastar-py = { workspace = true }
 
