@@ -1,0 +1,31 @@
+[package]
+name = "brotli-sse-actix"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+# Prototype: streaming Brotli compression for Server-Sent Events on actix-web,
+# tuned for the django-bolt use case. The encoder runs inside the handler (not
+# as middleware) so we control per-event flush, lgwin, and quality. Defaults
+# (level=5, lgwin=18) match the datastar-go reference in
+# cleemesser/bad_apple_svg_go_datastar.
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "brotli-sse-demo"
+path = "src/main.rs"
+
+[dependencies]
+actix-web = "4"
+async-stream = "0.3"
+brotli = "7"
+bytes = "1"
+futures = "0.3"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "time"] }
+
+[dev-dependencies]
+awc = "3"
+reqwest = { version = "0.12", default-features = false, features = ["stream"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "time", "sync"] }
