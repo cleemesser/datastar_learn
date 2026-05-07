@@ -10,10 +10,14 @@ All backends use `datastar_py.ServerSentEventGenerator as SSE` and Django Bolt's
 
 ## Common Backend Boilerplate
 
-Every SSE endpoint follows this shape:
+Every SSE endpoint follows this shape. This is the correct integration pattern —
+datastar-py's built-in `DatastarResponse` subclasses Django's `StreamingHttpResponse`,
+which Bolt's Rust runtime doesn't recognize. So we use Bolt's own `StreamingResponse`
+with the SSE headers applied manually, and datastar-py's `ServerSentEventGenerator`
+for formatting the SSE events (which are just strings).
 
-clm - is this true, this is just what I tried
 ```python
+import msgspec
 from datastar_py import ServerSentEventGenerator as SSE
 from django_bolt.responses import StreamingResponse
 
@@ -23,14 +27,73 @@ SSE_HEADERS = {
     "Content-Encoding": "identity",
 }
 
-def sse_response(generator):
-    """Wrap an SSE generator in a StreamingResponse."""
+def datastar_response(gen):
+    """Wrap an already-called async generator in a Bolt StreamingResponse with SSE headers.
+
+    Usage:
+        return datastar_response(generate())   # note: pass the called generator, not the function
+    """
     return StreamingResponse(
-        generator(),
+        gen,
         media_type="text/event-stream",
         headers=SSE_HEADERS,
     )
+
+
+def read_signals(request, type=None):
+    """Read Datastar signals from a Bolt request.
+
+    - For GET/DELETE: signals are in the query param `datastar` (JSON string)
+    - For POST/PUT/PATCH: signals are the JSON request body
+
+    Returns None if this isn't a Datastar request.
+    If `type` is a msgspec.Struct subclass, decodes and validates into that type.
+
+    Usage (untyped — returns dict):
+        signals = read_signals(request)
+        name = signals.get("firstName", "")
+
+    Usage (typed — returns a validated struct):
+        class ContactSignals(msgspec.Struct):
+            firstName: str = ""
+            lastName: str = ""
+            email: str = ""
+
+        signals = read_signals(request, type=ContactSignals)
+        signals.firstName  # guaranteed str, defaults to "" if missing
+    """
+    headers = request["headers"]
+    if "datastar-request" not in headers and "Datastar-Request" not in headers:
+        return None
+
+    method = request.method
+    if method in ("GET", "DELETE"):
+        query = request["query"]
+        data = query.get("datastar")
+    elif headers.get("content-type") == "application/json":
+        data = request.body
+    else:
+        return None
+
+    if not data:
+        return None
+    if isinstance(data, str):
+        data = data.encode()
+    return msgspec.json.decode(data, type=type) if type else msgspec.json.decode(data)
 ```
+
+### Why this shape?
+
+| Concern | What handles it |
+|---------|----------------|
+| SSE event formatting | `datastar_py.ServerSentEventGenerator` (classmethods that return strings) |
+| HTTP response + streaming | Bolt's `StreamingResponse` (Rust-backed, expects a called generator) |
+| SSE headers | `SSE_HEADERS` dict applied manually (Bolt has no defaults) |
+| Signal parsing | `read_signals()` helper — uses msgspec for decoding; pass a `msgspec.Struct` type for validated, typed signals |
+
+Note: `Content-Encoding: identity` tells the compression middleware to skip this
+response — without it, SSE events can get batched and arrive together instead of
+streaming incrementally.
 
 ---
 
@@ -91,17 +154,19 @@ the backend processes, then gets validation feedback or a success update.
 ### Python Backend
 
 ```python
+class ContactSignals(msgspec.Struct):
+    firstName: str = ""
+    lastName: str = ""
+    email: str = ""
+
 @bolt.post("/api/contacts")
 async def create_contact(request):
     async def generate():
-        # Read signals sent by Datastar
-        import json
-        body = await request.body()
-        signals = json.loads(body)
+        signals = read_signals(request, type=ContactSignals)
 
-        first = signals.get("firstName", "").strip()
-        last = signals.get("lastName", "").strip()
-        email = signals.get("email", "").strip()
+        first = signals.firstName.strip()
+        last = signals.lastName.strip()
+        email = signals.email.strip()
 
         # --- Validate ---
         errors = {}
@@ -138,7 +203,7 @@ async def create_contact(request):
             f'</div>'
         )
 
-    return sse_response(generate)
+    return datastar_response(generate())
 ```
 
 ### How it flows
@@ -213,7 +278,7 @@ async def get_contact(request, id: int):
     contact = await Contact.objects.aget(pk=id)
     async def generate():
         yield SSE.patch_elements(render_contact_display(contact))
-    return sse_response(generate)
+    return datastar_response(generate())
 
 
 @bolt.get("/api/contacts/{id}/edit")
@@ -222,26 +287,24 @@ async def edit_contact(request, id: int):
     contact = await Contact.objects.aget(pk=id)
     async def generate():
         yield SSE.patch_elements(render_contact_edit(contact))
-    return sse_response(generate)
+    return datastar_response(generate())
 
 
 @bolt.put("/api/contacts/{id}")
 async def update_contact(request, id: int):
     """Validate and save, then return display view."""
-    import json
-    signals = json.loads(await request.body())
+    signals = read_signals(request, type=ContactSignals)
 
     async def generate():
-        # validate...
         contact = await Contact.objects.aget(pk=id)
-        contact.first_name = signals["firstName"]
-        contact.last_name = signals["lastName"]
-        contact.email = signals["email"]
+        contact.first_name = signals.firstName
+        contact.last_name = signals.lastName
+        contact.email = signals.email
         await contact.asave()
 
         yield SSE.patch_elements(render_contact_display(contact))
 
-    return sse_response(generate)
+    return datastar_response(generate())
 
 
 def render_contact_display(c):
@@ -337,7 +400,7 @@ async def search_contacts(request):
 
         yield SSE.patch_elements(f'<div id="search-results" class="mt-2">{rows}</div>')
 
-    return sse_response(generate)
+    return datastar_response(generate())
 ```
 
 ### Key details
@@ -376,7 +439,7 @@ async def delete_contact(request, id: int):
 
     async def generate():
         yield SSE.remove_elements(f"#row-{id}")
-    return sse_response(generate)
+    return datastar_response(generate())
 ```
 
 ### Notes
@@ -412,11 +475,14 @@ Validate a single field as the user types, without submitting the whole form.
 ### Python Backend
 
 ```python
+class EmailSignals(msgspec.Struct):
+    email: str = ""
+
 @bolt.post("/api/validate/email")
 async def validate_email(request):
-    import json, re
-    signals = json.loads(await request.body())
-    email = signals.get("email", "").strip()
+    import re
+    signals = read_signals(request, type=EmailSignals)
+    email = signals.email.strip()
 
     async def generate():
         if not email:
@@ -428,7 +494,7 @@ async def validate_email(request):
         else:
             yield SSE.patch_signals({"_emailError": ""})
 
-    return sse_response(generate)
+    return datastar_response(generate())
 ```
 
 ### Notes
@@ -485,7 +551,7 @@ async def get_models(request):
         # Reset the model signal since the options changed
         yield SSE.patch_signals({"model": ""})
 
-    return sse_response(generate)
+    return datastar_response(generate())
 ```
 
 ### Notes
@@ -554,7 +620,7 @@ async def get_items(request):
             f'<div id="load-more">{html}</div>',
         )
 
-    return sse_response(generate)
+    return datastar_response(generate())
 ```
 
 ### Notes
@@ -612,7 +678,7 @@ async def run_process(request):
             '<div id="process-result" class="alert alert-success">Processing complete!</div>'
         )
 
-    return sse_response(generate)
+    return datastar_response(generate())
 ```
 
 ### Notes
@@ -656,7 +722,7 @@ async def live_feed(request):
             await feed_event.wait()
             yield SSE.patch_elements(render_feed(latest_items))
 
-    return sse_response(generate)
+    return datastar_response(generate())
 
 
 def render_feed(items):
@@ -745,7 +811,7 @@ async def edit_row(request, id: int):
             </td>
         </tr>
         ''')
-    return sse_response(generate)
+    return datastar_response(generate())
 
 @bolt.get("/api/contacts/{id}")
 async def get_row(request, id: int):
@@ -762,16 +828,19 @@ async def get_row(request, id: int):
             </td>
         </tr>
         ''')
-    return sse_response(generate)
+    return datastar_response(generate())
+
+class EditRowSignals(msgspec.Struct):
+    editName: str = ""
+    editEmail: str = ""
 
 @bolt.put("/api/contacts/{id}")
 async def save_row(request, id: int):
-    import json
-    signals = json.loads(await request.body())
+    signals = read_signals(request, type=EditRowSignals)
     async def generate():
         contact = await Contact.objects.aget(pk=id)
-        contact.name = signals["editName"]
-        contact.email = signals["editEmail"]
+        contact.name = signals.editName
+        contact.email = signals.editEmail
         await contact.asave()
 
         yield SSE.patch_elements(f'''
@@ -785,7 +854,7 @@ async def save_row(request, id: int):
             </td>
         </tr>
         ''')
-    return sse_response(generate)
+    return datastar_response(generate())
 ```
 
 ---
