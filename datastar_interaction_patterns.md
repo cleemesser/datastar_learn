@@ -17,7 +17,7 @@ with the SSE headers applied manually, and datastar-py's `ServerSentEventGenerat
 for formatting the SSE events (which are just strings).
 
 ```python
-import json
+import msgspec
 from datastar_py import ServerSentEventGenerator as SSE
 from django_bolt.responses import StreamingResponse
 
@@ -40,17 +40,27 @@ def datastar_response(gen):
     )
 
 
-def read_signals(request) -> dict | None:
+def read_signals(request, type=None):
     """Read Datastar signals from a Bolt request.
 
     - For GET/DELETE: signals are in the query param `datastar` (JSON string)
     - For POST/PUT/PATCH: signals are the JSON request body
 
     Returns None if this isn't a Datastar request.
+    If `type` is a msgspec.Struct subclass, decodes and validates into that type.
 
-    Usage:
+    Usage (untyped — returns dict):
         signals = read_signals(request)
         name = signals.get("firstName", "")
+
+    Usage (typed — returns a validated struct):
+        class ContactSignals(msgspec.Struct):
+            firstName: str = ""
+            lastName: str = ""
+            email: str = ""
+
+        signals = read_signals(request, type=ContactSignals)
+        signals.firstName  # guaranteed str, defaults to "" if missing
     """
     headers = request["headers"]
     if "datastar-request" not in headers and "Datastar-Request" not in headers:
@@ -65,7 +75,11 @@ def read_signals(request) -> dict | None:
     else:
         return None
 
-    return json.loads(data) if data else None
+    if not data:
+        return None
+    if isinstance(data, str):
+        data = data.encode()
+    return msgspec.json.decode(data, type=type) if type else msgspec.json.decode(data)
 ```
 
 ### Why this shape?
@@ -75,7 +89,7 @@ def read_signals(request) -> dict | None:
 | SSE event formatting | `datastar_py.ServerSentEventGenerator` (classmethods that return strings) |
 | HTTP response + streaming | Bolt's `StreamingResponse` (Rust-backed, expects a called generator) |
 | SSE headers | `SSE_HEADERS` dict applied manually (Bolt has no defaults) |
-| Signal parsing | `read_signals()` helper (adapts datastar-py's logic to Bolt's request object) |
+| Signal parsing | `read_signals()` helper — uses msgspec for decoding; pass a `msgspec.Struct` type for validated, typed signals |
 
 Note: `Content-Encoding: identity` tells the compression middleware to skip this
 response — without it, SSE events can get batched and arrive together instead of
@@ -140,14 +154,19 @@ the backend processes, then gets validation feedback or a success update.
 ### Python Backend
 
 ```python
+class ContactSignals(msgspec.Struct):
+    firstName: str = ""
+    lastName: str = ""
+    email: str = ""
+
 @bolt.post("/api/contacts")
 async def create_contact(request):
     async def generate():
-        signals = read_signals(request)
+        signals = read_signals(request, type=ContactSignals)
 
-        first = signals.get("firstName", "").strip()
-        last = signals.get("lastName", "").strip()
-        email = signals.get("email", "").strip()
+        first = signals.firstName.strip()
+        last = signals.lastName.strip()
+        email = signals.email.strip()
 
         # --- Validate ---
         errors = {}
@@ -274,14 +293,13 @@ async def edit_contact(request, id: int):
 @bolt.put("/api/contacts/{id}")
 async def update_contact(request, id: int):
     """Validate and save, then return display view."""
-    signals = read_signals(request)
+    signals = read_signals(request, type=ContactSignals)
 
     async def generate():
-        # validate...
         contact = await Contact.objects.aget(pk=id)
-        contact.first_name = signals["firstName"]
-        contact.last_name = signals["lastName"]
-        contact.email = signals["email"]
+        contact.first_name = signals.firstName
+        contact.last_name = signals.lastName
+        contact.email = signals.email
         await contact.asave()
 
         yield SSE.patch_elements(render_contact_display(contact))
@@ -457,11 +475,14 @@ Validate a single field as the user types, without submitting the whole form.
 ### Python Backend
 
 ```python
+class EmailSignals(msgspec.Struct):
+    email: str = ""
+
 @bolt.post("/api/validate/email")
 async def validate_email(request):
     import re
-    signals = read_signals(request)
-    email = signals.get("email", "").strip()
+    signals = read_signals(request, type=EmailSignals)
+    email = signals.email.strip()
 
     async def generate():
         if not email:
@@ -809,13 +830,17 @@ async def get_row(request, id: int):
         ''')
     return datastar_response(generate())
 
+class EditRowSignals(msgspec.Struct):
+    editName: str = ""
+    editEmail: str = ""
+
 @bolt.put("/api/contacts/{id}")
 async def save_row(request, id: int):
-    signals = read_signals(request)
+    signals = read_signals(request, type=EditRowSignals)
     async def generate():
         contact = await Contact.objects.aget(pk=id)
-        contact.name = signals["editName"]
-        contact.email = signals["editEmail"]
+        contact.name = signals.editName
+        contact.email = signals.editEmail
         await contact.asave()
 
         yield SSE.patch_elements(f'''
